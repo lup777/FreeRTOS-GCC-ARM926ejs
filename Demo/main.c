@@ -32,6 +32,7 @@
 #include <stddef.h>
 
 #include <FreeRTOS.h>
+#include <queue.h>
 #include <task.h>
 
 #include "app_config.h"
@@ -53,32 +54,112 @@
 /* Struct with settings for each task */
 typedef struct _paramStruct
 {
-    portCHAR* text;                  /* text to be printed by the task */
-    UBaseType_t  delay;              /* delay in milliseconds */
+  portCHAR* text;                  /* text to be printed by the task */
+  UBaseType_t  delay;              /* delay in milliseconds */
+  QueueHandle_t taskQueue;
 } paramStruct;
 
 /* Default parameters if no parameter struct is available */
 static const portCHAR defaultText[] = "<NO TEXT>\r\n";
 static const UBaseType_t defaultDelay = 1000;
 
+/* Parameters for two tasks */
+#define TASK_LIST_SIZE 3
+static paramStruct tParam[TASK_LIST_SIZE] =
+{
+    (paramStruct) { .text="Task0", .delay=2000 },
+    (paramStruct) { .text="Task1", .delay=3000 },
+    (paramStruct) { .text="Task2", .delay=3000 }
+};
+
+QueueHandle_t taskSwitcherQueue;
+QueueHandle_t activeTaskQueue;
+
+void vTaskSwitcher( void *pvParameters ) {
+  (void)pvParameters;
+  taskSwitcherQueue = xQueueCreate(PRINT_QUEUE_SIZE, sizeof(portCHAR) * 2);
+  if ( 0 == taskSwitcherQueue ) {
+    vPrintMsg("create task switch queue failed");
+  }
+
+  portCHAR message[2];
+  vPrintMsg("task switcher started\r\n");
+
+  while(1) {
+    xQueueReceive(taskSwitcherQueue, (void*) message, portMAX_DELAY);
+
+    switch(message[0]) {
+    case MSG_TASK_SWITCH:
+      if (message[1] < TASK_LIST_SIZE) {
+        vPrintMsg("task switch: ");
+        vPrintChar(message[1] + 0x30);
+        int task_num = message[1];
+        activeTaskQueue = tParam[task_num].taskQueue;
+        vPrintMsg("\r\n");
+      }
+      break;
+
+    case MSG_SHOW_TASK_LIST:
+      {
+        int i = 0;
+        for(; i < TASK_LIST_SIZE; i++) {
+          vPrintChar(i + 0x30);
+          vPrintMsg(" - ");
+          vPrintMsg(tParam[i].text);
+          vPrintMsg("\r\n");
+        }
+        vPrintMsg("\r\n");
+        activeTaskQueue = taskSwitcherQueue;
+      }
+      break;
+    default:
+      vPrintMsg("task switcher: unknown msg\n");
+      break;
+    }
+  }
+
+}
 
 /* Task function - may be instantiated in multiple tasks */
 void vTaskFunction( void *pvParameters )
 {
     const portCHAR* taskName;
-    UBaseType_t  delay;
+    //UBaseType_t  delay;
     paramStruct* params = (paramStruct*) pvParameters;
+    portCHAR message[2];
 
     taskName = ( NULL==params || NULL==params->text ? defaultText : params->text );
-    delay = ( NULL==params ? defaultDelay : params->delay);
+    //delay = ( NULL==params ? defaultDelay : params->delay);
 
-    for( ; ; )
+    volatile portCHAR running = 1;
+
+    activeTaskQueue = xQueueCreate(PRINT_QUEUE_SIZE, sizeof(portCHAR) * 2);
+    params->taskQueue = activeTaskQueue;
+
+    if ( 0 == activeTaskQueue ) {
+      vPrintMsg("create task queue failed");
+      running = 0;
+    }
+
+    while( running )
     {
         /* Print out the name of this task. */
 
-        vPrintMsg(taskName);
 
-        vTaskDelay( delay / portTICK_RATE_MS );
+        xQueueReceive(activeTaskQueue, (void*) message, portMAX_DELAY);
+        switch(message[0]) {
+        case MSG_QUIT:
+          vPrintMsg(taskName);
+          vPrintMsg(" :quit task\r\n");
+          break;
+
+        default:
+          vPrintMsg(taskName);
+          vPrintMsg(" :unknown message\r\n");
+          break;
+        }
+
+        //vTaskDelay( delay / portTICK_RATE_MS );
     }
 
     /*
@@ -88,54 +169,6 @@ void vTaskFunction( void *pvParameters )
      */
     vTaskDelete(NULL);
 }
-
-
-/* Fixed frequency periodic task function - may be instantiated in multiple tasks */
-void vPeriodicTaskFunction(void* pvParameters)
-{
-    const portCHAR* taskName;
-    UBaseType_t delay;
-    paramStruct* params = (paramStruct*) pvParameters;
-    TickType_t lastWakeTime;
-
-    taskName = ( NULL==params || NULL==params->text ? defaultText : params->text );
-    delay = ( NULL==params ? defaultDelay : params->delay);
-
-    /*
-     * This variable must be initialized once.
-     * Then it will be updated automatically by vTaskDelayUntil().
-     */
-    lastWakeTime = xTaskGetTickCount();
-
-    for( ; ; )
-    {
-        /* Print out the name of this task. */
-
-        vPrintMsg(taskName);
-
-        /*
-         * The task will unblock exactly after 'delay' milliseconds (actually
-         * after the appropriate number of ticks), relative from the moment
-         * it was last unblocked.
-         */
-        vTaskDelayUntil( &lastWakeTime, delay / portTICK_RATE_MS );
-    }
-
-    /*
-     * If the task implementation ever manages to break out of the
-     * infinite loop above, it must be deleted before reaching the
-     * end of the function!
-     */
-    vTaskDelete(NULL);
-}
-
-
-/* Parameters for two tasks */
-static const paramStruct tParam[2] =
-{
-    (paramStruct) { .text="Task1\r\n", .delay=2000 },
-    (paramStruct) { .text="Periodic task\r\n", .delay=3000 }
-};
 
 
 /*
@@ -146,7 +179,8 @@ static const paramStruct tParam[2] =
 static void FreeRTOS_Error(const portCHAR* msg)
 {
     if ( NULL != msg )
-    {
+      {
+        vPrintMsg("freeRTOS error\n");
         vDirectPrintMsg(msg);
     }
 
@@ -189,17 +223,35 @@ void main(void)
     }
 
     /* And finally create two tasks: */
-    if ( pdPASS != xTaskCreate(vTaskFunction, "task1", 128, (void*) &tParam[0],
+    if ( pdPASS != xTaskCreate(vTaskFunction, "task0", 128, (void*) &tParam[0],
                                PRIOR_PERIODIC, NULL) )
     {
         FreeRTOS_Error("Could not create task1\r\n");
     }
 
+    if ( pdPASS != xTaskCreate(vTaskFunction, "task1", 128, (void*) &tParam[1],
+                               PRIOR_PERIODIC, NULL) )
+    {
+        FreeRTOS_Error("Could not create task1\r\n");
+    }
+
+    if ( pdPASS != xTaskCreate(vTaskFunction, "task2", 128, (void*) &tParam[2],
+                               PRIOR_PERIODIC, NULL) )
+    {
+        FreeRTOS_Error("Could not create task1\r\n");
+    }
+
+    if ( pdPASS != xTaskCreate(vTaskSwitcher, "taskSwitcher", 128, (void*) NULL,
+                               PRIOR_PERIODIC, NULL) )
+    {
+        FreeRTOS_Error("Could not create task1\r\n");
+    }
+/*
     if ( pdPASS != xTaskCreate(vPeriodicTaskFunction, "task2", 128, (void*) &tParam[1],
                                PRIOR_FIX_FREQ_PERIODIC, NULL) )
     {
         FreeRTOS_Error("Could not create task2\r\n");
-    }
+    }*/
 
     vDirectPrintMsg("A text may be entered using a keyboard.\r\n");
     vDirectPrintMsg("It will be displayed when 'Enter' is pressed.\r\n\r\n");

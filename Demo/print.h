@@ -46,5 +46,11 @@ void vDirectPrintMsg(const portCHAR* msg);
 
 void vDirectPrintCh(portCHAR ch);
 
+extern QueueHandle_t activeTaskQueue;
+extern QueueHandle_t taskSwitcherQueue;
+#define MSG_QUIT 00
+#define MSG_TASK_SWITCH 01
+#define MSG_SHOW_TASK_LIST 02
+
 
 #endif  /* _PRINT_H_ */

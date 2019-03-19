@@ -169,145 +169,57 @@ static void recvIsrHandler(void)
  */
 void recvTask(void* params)
 {
-    portCHAR ch;
+    portCHAR ch[2];
 
     for ( ; ; )
     {
         /* The task is blocked until something appears in the queue */
-        xQueueReceive(recvQueue, (void*) &ch, portMAX_DELAY);
+        xQueueReceive(recvQueue, (void*) ch, portMAX_DELAY);
 
-        /*
-         * Although a bit long, 'switch' offers a convenient way to
-         * insert or remove valid characters.
-         */
-        switch (ch)
-        {
-            /* "Ordinary" valid characters that will be appended to a buffer */
-
-            /* Uppercase letters 'A' .. 'Z': */
-            case 'A' :
-            case 'B' :
-            case 'C' :
-            case 'D' :
-            case 'E' :
-            case 'F' :
-            case 'G' :
-            case 'H' :
-            case 'I' :
-            case 'J' :
-            case 'K' :
-            case 'L' :
-            case 'M' :
-            case 'N' :
-            case 'O' :
-            case 'P' :
-            case 'Q' :
-            case 'R' :
-            case 'S' :
-            case 'T' :
-            case 'U' :
-            case 'V' :
-            case 'W' :
-            case 'X' :
-            case 'Y' :
-            case 'Z' :
-
-            /* Lowercase letters 'a'..'z': */
-            case 'a' :
-            case 'b' :
-            case 'c' :
-            case 'd' :
-            case 'e' :
-            case 'f' :
-            case 'g' :
-            case 'h' :
-            case 'i' :
-            case 'j' :
-            case 'k' :
-            case 'l' :
-            case 'm' :
-            case 'n' :
-            case 'o' :
-            case 'p' :
-            case 'q' :
-            case 'r' :
-            case 's' :
-            case 't' :
-            case 'u' :
-            case 'v' :
-            case 'w' :
-            case 'x' :
-            case 'y' :
-            case 'z' :
-
-            /* Decimal digits '0'..'9': */
-            case '0' :
-            case '1' :
-            case '2' :
-            case '3' :
-            case '4' :
-            case '5' :
-            case '6' :
-            case '7' :
-            case '8' :
-            case '9' :
-
-            /* Other valid characters: */
-            case ' ' :
-            case '_' :
-            case '+' :
-            case '-' :
-            case '/' :
-            case '.' :
-            case ',' :
-            {
-                if ( bufPos < RECV_BUFFER_LEN )
-                {
-                    /* If the buffer is not full yet, append the character */
-                    buf[bufCntr][MSG_OFFSET + bufPos] = ch;
-                    /* and increase the position index: */
-                    ++bufPos;
-                }
-
-                break;
+        switch(ch[0]) {
+        case 'q':
+          vPrintMsg("q pressed\n");
+          if (activeTaskQueue != NULL) {
+            ch[0] = MSG_QUIT;
+            xQueueSendToBack(activeTaskQueue, (void*) ch, 0);
             }
+          else
+            vPrintMsg("active task is NULL");
 
-            /* Backspace must be handled separately: */
-            case CODE_BS :
-            {
-                /*
-                 * If the buffer is not empty, decrease the position index,
-                 * i.e. "delete" the last character
-                 */
-                if ( bufPos>0 )
-                {
-                    --bufPos;
-                }
+          if (taskSwitcherQueue != NULL) {
+            ch[0] = MSG_SHOW_TASK_LIST;
+            xQueueSendToBack(taskSwitcherQueue, (void*) ch, 0);
+          }
+          else
+            vPrintMsg("task switcher queue is NULL");
+          break;
 
-                break;
-            }
+        case '0':
+          ch[0] = MSG_TASK_SWITCH;
+          ch[1] = 0;
+          xQueueSendToBack(taskSwitcherQueue, (void*) ch, 0);
+          break;
 
-            /* 'Enter' a.k.a. Carriage Return (CR): */
-            case CODE_CR :
-            {
-                /* Append characters to terminate the string:*/
-                bufPos += MSG_OFFSET;
-                buf[bufCntr][bufPos++] = '"';
-                buf[bufCntr][bufPos++] = '\r';
-                buf[bufCntr][bufPos++] = '\n';
-                buf[bufCntr][bufPos]   = '\0';
-                /* Send the entire string to the print queue */
-                vPrintMsg(buf[bufCntr]);
-                /* And switch to the next line of the "circular" buffer */
-                ++bufCntr;
-                bufCntr %= RECV_BUFFER_SIZE;
-                /* "Reset" the position index */
-                bufPos = 0;
+        case '1':
+          ch[0] = MSG_TASK_SWITCH;
+          ch[1] = 1;
+          xQueueSendToBack(taskSwitcherQueue, (void*) ch, 0);
+          break;
 
-                break;
-            }
+        case '2':
+          ch[0] = MSG_TASK_SWITCH;
+          ch[1] = 2;
+          xQueueSendToBack(taskSwitcherQueue, (void*) ch, 0);
+          break;
 
-        }  /* switch */
+
+        default:
+          if (activeTaskQueue != NULL)
+            xQueueSendToBack(activeTaskQueue, (void*) ch, 0);
+          break;
+        }
+        continue;
+
 
     }  /* for */
 
