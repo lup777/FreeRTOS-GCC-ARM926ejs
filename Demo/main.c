@@ -30,6 +30,7 @@
 
 
 #include <stddef.h>
+#include <string.h>
 
 #include <FreeRTOS.h>
 #include <queue.h>
@@ -50,13 +51,13 @@
  */
 #pragma GCC diagnostic ignored "-Wmain"
 
-
 /* Struct with settings for each task */
 typedef struct _paramStruct
 {
   portCHAR* text;                  /* text to be printed by the task */
   UBaseType_t  delay;              /* delay in milliseconds */
   QueueHandle_t taskQueue;
+  portCHAR message[TASK_MSG_BUFFER_LEN];
 } paramStruct;
 
 /* Default parameters if no parameter struct is available */
@@ -64,37 +65,53 @@ static const portCHAR defaultText[] = "<NO TEXT>\r\n";
 static const UBaseType_t defaultDelay = 1000;
 
 /* Parameters for two tasks */
-#define TASK_LIST_SIZE 3
+#define TASK_LIST_SIZE 4
 static paramStruct tParam[TASK_LIST_SIZE] =
 {
     (paramStruct) { .text="Task0", .delay=2000 },
     (paramStruct) { .text="Task1", .delay=3000 },
-    (paramStruct) { .text="Task2", .delay=3000 }
+    (paramStruct) { .text="Task2", .delay=3000 },
+    (paramStruct) { .text="Task3", .delay=3000 }
 };
 
 QueueHandle_t taskSwitcherQueue;
 QueueHandle_t activeTaskQueue;
 
+void SetActiveQueue(QueueHandle_t queue) {
+  portENTER_CRITICAL();
+  activeTaskQueue = queue;
+  portEXIT_CRITICAL();
+}
+
+QueueHandle_t GetActiveQueue(void) {
+  QueueHandle_t tmp;
+  portENTER_CRITICAL();
+  tmp = activeTaskQueue;
+  portEXIT_CRITICAL();
+  return tmp;
+}
+
 void vTaskSwitcher( void *pvParameters ) {
   (void)pvParameters;
-  taskSwitcherQueue = xQueueCreate(PRINT_QUEUE_SIZE, sizeof(portCHAR) * 2);
+  taskSwitcherQueue = xQueueCreate(PRINT_QUEUE_SIZE, sizeof(portCHAR) * TASK_MSG_BUFFER_LEN);
   if ( 0 == taskSwitcherQueue ) {
     vPrintMsg("create task switch queue failed");
   }
 
-  portCHAR message[2];
-  vPrintMsg("task switcher started\r\n");
+  portCHAR message[TASK_MSG_BUFFER_LEN];
 
   while(1) {
     xQueueReceive(taskSwitcherQueue, (void*) message, portMAX_DELAY);
 
     switch(message[0]) {
     case MSG_TASK_SWITCH:
-      if (message[1] < TASK_LIST_SIZE) {
+       if (message[1] < TASK_LIST_SIZE) {
         vPrintMsg("task switch: ");
         vPrintChar(message[1] + 0x30);
         int task_num = message[1];
-        activeTaskQueue = tParam[task_num].taskQueue;
+
+        SetActiveQueue(tParam[task_num].taskQueue);
+
         vPrintMsg("\r\n");
       }
       break;
@@ -102,18 +119,29 @@ void vTaskSwitcher( void *pvParameters ) {
     case MSG_SHOW_TASK_LIST:
       {
         int i = 0;
-        for(; i < TASK_LIST_SIZE; i++) {
-          vPrintChar(i + 0x30);
-          vPrintMsg(" - ");
+        for(i = 0; i < TASK_LIST_SIZE; i++) {
           vPrintMsg(tParam[i].text);
           vPrintMsg("\r\n");
         }
-        vPrintMsg("\r\n");
-        activeTaskQueue = taskSwitcherQueue;
+        SetActiveQueue(taskSwitcherQueue);
       }
       break;
-    default:
-      vPrintMsg("task switcher: unknown msg\n");
+
+    default: {
+      signed char ch = message[0] - 0x30;
+      if((ch <= 9) && (ch >= 0)) {
+        if (ch < TASK_LIST_SIZE) {
+          vPrintMsg("task switch: ");
+          vPrintChar(message[0]);
+          int task_num = ch;
+          SetActiveQueue(tParam[task_num].taskQueue);
+          vPrintMsg("\r\n");
+          break;
+        }
+      }
+
+      vPrintMsg("task switcher: unknown msg\r\n");
+    }
       break;
     }
   }
@@ -124,16 +152,15 @@ void vTaskSwitcher( void *pvParameters ) {
 void vTaskFunction( void *pvParameters )
 {
     const portCHAR* taskName;
-    //UBaseType_t  delay;
+
     paramStruct* params = (paramStruct*) pvParameters;
-    portCHAR message[2];
+    portCHAR* message = params->message;
 
     taskName = ( NULL==params || NULL==params->text ? defaultText : params->text );
-    //delay = ( NULL==params ? defaultDelay : params->delay);
 
     volatile portCHAR running = 1;
 
-    activeTaskQueue = xQueueCreate(PRINT_QUEUE_SIZE, sizeof(portCHAR) * 2);
+    activeTaskQueue = xQueueCreate(PRINT_QUEUE_SIZE, sizeof(portCHAR) * TASK_MSG_BUFFER_LEN);
     params->taskQueue = activeTaskQueue;
 
     if ( 0 == activeTaskQueue ) {
@@ -143,10 +170,10 @@ void vTaskFunction( void *pvParameters )
 
     while( running )
     {
-        /* Print out the name of this task. */
+      BaseType_t queue_rec_result =
+        xQueueReceive(params->taskQueue, (void*) message, portMAX_DELAY);
 
-
-        xQueueReceive(activeTaskQueue, (void*) message, portMAX_DELAY);
+      if (queue_rec_result == pdTRUE) {
         switch(message[0]) {
         case MSG_QUIT:
           vPrintMsg(taskName);
@@ -158,6 +185,10 @@ void vTaskFunction( void *pvParameters )
           vPrintMsg(" :unknown message\r\n");
           break;
         }
+      } else {
+        vPrintMsg(taskName);
+        vPrintMsg(" :no messages\r\n");
+      }
 
         //vTaskDelay( delay / portTICK_RATE_MS );
     }
@@ -226,7 +257,7 @@ void main(void)
     if ( pdPASS != xTaskCreate(vTaskFunction, "task0", 128, (void*) &tParam[0],
                                PRIOR_PERIODIC, NULL) )
     {
-        FreeRTOS_Error("Could not create task1\r\n");
+        FreeRTOS_Error("Could not create task0\r\n");
     }
 
     if ( pdPASS != xTaskCreate(vTaskFunction, "task1", 128, (void*) &tParam[1],
@@ -238,11 +269,17 @@ void main(void)
     if ( pdPASS != xTaskCreate(vTaskFunction, "task2", 128, (void*) &tParam[2],
                                PRIOR_PERIODIC, NULL) )
     {
-        FreeRTOS_Error("Could not create task1\r\n");
+        FreeRTOS_Error("Could not create task2\r\n");
+    }
+
+    if ( pdPASS != xTaskCreate(vTaskFunction, "task3", 128, (void*) &tParam[3],
+                               PRIOR_PERIODIC, NULL) )
+    {
+        FreeRTOS_Error("Could not create task3\r\n");
     }
 
     if ( pdPASS != xTaskCreate(vTaskSwitcher, "taskSwitcher", 128, (void*) NULL,
-                               PRIOR_PERIODIC, NULL) )
+                               PRIOR_TASK_SWITCHER, NULL) )
     {
         FreeRTOS_Error("Could not create task1\r\n");
     }

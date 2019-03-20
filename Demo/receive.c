@@ -176,15 +176,18 @@ void recvTask(void* params)
         /* The task is blocked until something appears in the queue */
         xQueueReceive(recvQueue, (void*) ch, portMAX_DELAY);
 
+        QueueHandle_t active_queue = GetActiveQueue();
+
         switch(ch[0]) {
         case 'q':
-          vPrintMsg("q pressed\n");
-          if (activeTaskQueue != NULL) {
+          //vPrintMsg("q pressed\n");
+          if (active_queue != NULL) {
             ch[0] = MSG_QUIT;
-            xQueueSendToBack(activeTaskQueue, (void*) ch, 0);
+            xQueueSendToBack(active_queue, (void*) ch, 0);
             }
-          else
+          else {
             vPrintMsg("active task is NULL");
+          }
 
           if (taskSwitcherQueue != NULL) {
             ch[0] = MSG_SHOW_TASK_LIST;
@@ -194,31 +197,13 @@ void recvTask(void* params)
             vPrintMsg("task switcher queue is NULL");
           break;
 
-        case '0':
-          ch[0] = MSG_TASK_SWITCH;
-          ch[1] = 0;
-          xQueueSendToBack(taskSwitcherQueue, (void*) ch, 0);
-          break;
-
-        case '1':
-          ch[0] = MSG_TASK_SWITCH;
-          ch[1] = 1;
-          xQueueSendToBack(taskSwitcherQueue, (void*) ch, 0);
-          break;
-
-        case '2':
-          ch[0] = MSG_TASK_SWITCH;
-          ch[1] = 2;
-          xQueueSendToBack(taskSwitcherQueue, (void*) ch, 0);
-          break;
-
-
         default:
-          if (activeTaskQueue != NULL)
-            xQueueSendToBack(activeTaskQueue, (void*) ch, 0);
+          if (active_queue != NULL)
+            xQueueSendToBack(active_queue, (void*) ch, 0);
           break;
         }
         continue;
+
 
 
     }  /* for */

@@ -52,6 +52,7 @@
 #define PRIOR_FIX_FREQ_PERIODIC          ( 3 )
 #define PRIOR_PRINT_GATEKEEPR            ( 1 )
 #define PRIOR_RECEIVER                   ( 1 )
+#define PRIOR_TASK_SWITCHER              ( 3 )
 
 
 /* Settings for print.c */
@@ -60,7 +61,7 @@
 #define PRINT_QUEUE_SIZE                 ( 10 )
 
 /* Number of string buffers to print individual characters */
-#define PRINT_CHR_BUF_SIZE               ( 5 )
+#define PRINT_CHR_BUF_SIZE               ( 10 )
 
 
 /* Settings for receive.c */
@@ -69,7 +70,7 @@
 #define RECV_QUEUE_SIZE                  ( 10 )
 
 /* Number of string buffers necessary to print received strings */
-#define RECV_BUFFER_SIZE                 ( 3 )
+#define RECV_BUFFER_SIZE                 ( 10 )
 
 /*
  * Number of characters in a buffer.
@@ -77,5 +78,7 @@
  * to print the string properly.
  */
 #define RECV_BUFFER_LEN                  ( 50 )
+
+#define TASK_MSG_BUFFER_LEN              ( 2 )
 
 #endif  /* _APP_CONFIG_H_ */

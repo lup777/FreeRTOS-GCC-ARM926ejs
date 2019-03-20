@@ -50,7 +50,7 @@
 /* The number of actual strings for the buffer has been defined in "app_config.h" */
 
 /* Length of one buffer string, one byte for the character, the other one for '\0' */
-#define CHR_BUF_STRING_LEN      ( 2 )
+#define CHR_BUF_STRING_LEN      ( 4 )
 
 /* Allocate the buffer for printing individual characters */
 static portCHAR printChBuf[ PRINT_CHR_BUF_SIZE ][ CHR_BUF_STRING_LEN ];
@@ -155,7 +155,7 @@ void vPrintMsg(const portCHAR* msg)
 {
     if ( NULL != msg )
     {
-        xQueueSendToBack(printQueue, (void*) &msg, 0);
+      xQueueSendToBack(printQueue, (void*) &msg, 0);
     }
 }
 
@@ -208,7 +208,7 @@ void vDirectPrintMsg(const portCHAR* msg)
 {
     if ( NULL != msg )
     {
-        uart_print(printUartNr, msg);
+      uart_print(printUartNr, msg);
     }
 }
 

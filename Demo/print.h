@@ -52,5 +52,8 @@ extern QueueHandle_t taskSwitcherQueue;
 #define MSG_TASK_SWITCH 01
 #define MSG_SHOW_TASK_LIST 02
 
+void SetActiveQueue(QueueHandle_t queue);
+QueueHandle_t GetActiveQueue(void);
+
 
 #endif  /* _PRINT_H_ */
